@@ -8,10 +8,19 @@ import com.spirit.scan.entity.EntityOutput
 
 @Composable
 fun LiveHud(output: EntityOutput?) {
-    val text = if (output == null) {
-        "SPIRIT SCAN\n\nWaiting for signal..."
+    if (output == null) {
+        Text(
+            text = "SPIRIT SCAN - Waiting for signal...",
+            color = Color(0xFF7CFFB2),
+            fontSize = 18.sp
+        )
     } else {
-        "SPIRIT SCAN\n\n\( {output.jonesLabel.uppercase()}\n \){(output.jonesScore * 100).toInt()}%\n\n${output.narrative}"
+        val score = (output.jonesScore * 100).toInt()
+        val text = "SPIRIT SCAN - " + output.jonesLabel + " - " + score + "% - " + output.narrative
+        Text(
+            text = text,
+            color = Color(0xFF7CFFB2),
+            fontSize = 18.sp
+        )
     }
-    Text(text = text, color = Color(0xFF7CFFB2), fontSize = 18.sp)
 }
