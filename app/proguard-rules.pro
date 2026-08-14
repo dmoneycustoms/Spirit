@@ -1,4 +1,0 @@
--keep class ai.onnxruntime.** { *; }
--dontwarn ai.onnxruntime.**
--keep class com.spirit.scan.ml.** { *; }
--keep class com.spirit.scan.entity.** { *; }
