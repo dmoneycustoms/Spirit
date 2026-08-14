@@ -12,23 +12,6 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Show project structure
-        run: |
-          echo "=== ROOT FILES ==="
-          ls -la
-          echo ""
-          echo "=== APP FOLDER ==="
-          ls -la app/ 2>/dev/null || echo "NO app/ folder"
-          echo ""
-          echo "=== SETTINGS ==="
-          cat settings.gradle.kts 2>/dev/null || echo "NO settings.gradle.kts"
-          echo ""
-          echo "=== ROOT BUILD ==="
-          cat build.gradle.kts 2>/dev/null || echo "NO build.gradle.kts"
-          echo ""
-          echo "=== APP BUILD ==="
-          cat app/build.gradle.kts 2>/dev/null || echo "NO app/build.gradle.kts"
-
       - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
@@ -38,27 +21,28 @@ jobs:
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v4
+      - name: Grant execute permission for gradlew
+        run: chmod +x gradlew
 
-      - name: Build
-        run: |
-          gradle assembleDebug --stacktrace --info 2>&1 | tee build-log.txt
-          echo "EXIT CODE: $?"
+      - name: Build Debug APK
+        run: ./gradlew assembleDebug --stacktrace
 
-      - name: Show build log tail
-        if: always()
-        run: |
-          echo "=== LAST 80 LINES OF BUILD LOG ==="
-          tail -80 build-log.txt 2>/dev/null || echo "No log"
-          echo ""
-          echo "=== ANY APK? ==="
-          find . -name "*.apk" 2>/dev/null || echo "None"
-
-      - name: Upload log
-        if: always()
+      - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: build-log
-          path: build-log.txt
-          if-no-files-found: ignore
+          name: SpiritScan-debug
+          path: app/build/outputs/apk/debug/app-debug.apk
+          retention-days: 14
+
+      - name: Also copy with friendly name
+        run: |
+          mkdir -p release
+          cp app/build/outputs/apk/debug/app-debug.apk release/SpiritScan.apk
+          ls -lh release/
+
+      - name: Upload friendly-named APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: SpiritScan
+          path: release/SpiritScan.apk
+          retention-days: 14
