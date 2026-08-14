@@ -12,8 +12,19 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Sensors
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.NavigationBar
+import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Text
+import androidx.compose.material3.darkColorScheme
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.core.content.ContextCompat
@@ -65,16 +76,32 @@ class MainActivity : ComponentActivity() {
             val history = remember { mutableStateListOf<EntityOutput>() }
             var selectedTab by remember { mutableIntStateOf(0) }
 
-            MaterialTheme(colorScheme = darkColorScheme(primary = Color(0xFF7CFFB2), background = Color(0xFF0A0A0F), surface = Color(0xFF16161E))) {
+            MaterialTheme(
+                colorScheme = darkColorScheme(
+                    primary = Color(0xFF7CFFB2),
+                    background = Color(0xFF0A0A0F),
+                    surface = Color(0xFF16161E)
+                )
+            ) {
                 Scaffold(
                     bottomBar = {
                         NavigationBar(containerColor = Color(0xFF111118)) {
-                            NavigationBarItem(selected = selectedTab == 0, onClick = { selectedTab = 0 }, icon = { Icon(Icons.Default.Sensors, null) }, label = { Text("Live") })
-                            NavigationBarItem(selected = selectedTab == 1, onClick = { selectedTab = 1 }, icon = { Icon(Icons.Default.History, null) }, label = { Text("Timeline") })
+                            NavigationBarItem(
+                                selected = selectedTab == 0,
+                                onClick = { selectedTab = 0 },
+                                icon = { Icon(Icons.Default.Sensors, contentDescription = null) },
+                                label = { Text("Live") }
+                            )
+                            NavigationBarItem(
+                                selected = selectedTab == 1,
+                                onClick = { selectedTab = 1 },
+                                icon = { Icon(Icons.Default.History, contentDescription = null) },
+                                label = { Text("Timeline") }
+                            )
                         }
                     }
                 ) { padding ->
-                    Box(Modifier.padding(padding)) {
+                    Box(modifier = Modifier.padding(padding)) {
                         when (selectedTab) {
                             0 -> LiveHud(current)
                             1 -> TimelineScreen(history)
@@ -85,16 +112,28 @@ class MainActivity : ComponentActivity() {
 
             uiStateHolder = UiStateHolder(
                 setCurrent = { current = it },
-                addHistory = { history.add(it); if (history.size > 200) history.removeAt(0) }
+                addHistory = {
+                    history.add(it)
+                    if (history.size > 200) history.removeAt(0)
+                }
             )
         }
         requestPermissionsAndStart()
     }
 
     private fun requestPermissionsAndStart() {
-        val needed = arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION, Manifest.permission.BODY_SENSORS, Manifest.permission.RECORD_AUDIO, Manifest.permission.POST_NOTIFICATIONS)
-        val missing = needed.filter { ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED }
-        if (missing.isEmpty()) startPipeline() else permissionLauncher.launch(missing.toTypedArray())
+        val needed = arrayOf(
+            Manifest.permission.ACCESS_FINE_LOCATION,
+            Manifest.permission.ACCESS_COARSE_LOCATION,
+            Manifest.permission.BODY_SENSORS,
+            Manifest.permission.RECORD_AUDIO,
+            Manifest.permission.POST_NOTIFICATIONS
+        )
+        val missing = needed.filter {
+            ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED
+        }
+        if (missing.isEmpty()) startPipeline()
+        else permissionLauncher.launch(missing.toTypedArray())
     }
 
     private fun startPipeline() {
@@ -102,10 +141,20 @@ class MainActivity : ComponentActivity() {
             while (true) {
                 try {
                     val loc = withContext(Dispatchers.IO) {
-                        fusedLocation.getCurrentLocation(Priority.PRIORITY_HIGH_ACCURACY, CancellationTokenSource().token).result
+                        fusedLocation.getCurrentLocation(
+                            Priority.PRIORITY_HIGH_ACCURACY,
+                            CancellationTokenSource().token
+                        ).result
                     }
-                    if (loc != null) currentLocation = LocationContext(lat = loc.latitude, lon = loc.longitude, accuracy = loc.accuracy)
-                } catch (_: Exception) {}
+                    if (loc != null) {
+                        currentLocation = LocationContext(
+                            lat = loc.latitude,
+                            lon = loc.longitude,
+                            accuracy = loc.accuracy
+                        )
+                    }
+                } catch (_: Exception) {
+                }
                 kotlinx.coroutines.delay(10_000)
             }
         }
@@ -133,6 +182,10 @@ class MainActivity : ComponentActivity() {
         if (::sde.isInitialized) sde.close()
     }
 
-    private data class UiStateHolder(val setCurrent: ((EntityOutput?) -> Unit)?, val addHistory: ((EntityOutput) -> Unit)?)
+    private data class UiStateHolder(
+        val setCurrent: ((EntityOutput?) -> Unit)?,
+        val addHistory: ((EntityOutput) -> Unit)?
+    )
+
     private var uiStateHolder: UiStateHolder? = null
 }
