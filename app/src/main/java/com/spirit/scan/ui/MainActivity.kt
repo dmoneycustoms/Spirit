@@ -61,18 +61,29 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        var modelsOk = false
+        var modelError = ""
         try {
             jones = JonesRunner(this)
             sde = SdeRunner(this)
             entityEngine = EntityEngine(jones, sde, LlmClient(this))
+            modelsOk = true
         } catch (e: Exception) {
             Log.e(SpiritApp.TAG, "Failed to load models", e)
+            modelError = e.message ?: "unknown model error"
         }
 
         setContent {
             var current by remember { mutableStateOf<EntityOutput?>(null) }
             val history = remember { mutableStateListOf<EntityOutput>() }
             var selectedTab by remember { mutableIntStateOf(0) }
+            var status by remember {
+                mutableStateOf(
+                    if (modelsOk) "models ok - waiting for sensors..."
+                    else "MODELS FAILED: " + modelError
+                )
+            }
 
             MaterialTheme(
                 colorScheme = darkColorScheme(
@@ -101,7 +112,7 @@ class MainActivity : ComponentActivity() {
                 ) { padding ->
                     Box {
                         when (selectedTab) {
-                            0 -> LiveHud(current)
+                            0 -> LiveHud(current, status)
                             1 -> TimelineScreen(history)
                         }
                     }
@@ -113,10 +124,14 @@ class MainActivity : ComponentActivity() {
                 addHistory = {
                     history.add(it)
                     if (history.size > 200) history.removeAt(0)
-                }
+                },
+                setStatus = { status = it }
             )
         }
-        requestPermissionsAndStart()
+
+        if (modelsOk) {
+            requestPermissionsAndStart()
+        }
     }
 
     private fun requestPermissionsAndStart() {
@@ -135,6 +150,8 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun startPipeline() {
+        if (!::entityEngine.isInitialized) return
+
         lifecycleScope.launch {
             while (true) {
                 try {
@@ -160,17 +177,23 @@ class MainActivity : ComponentActivity() {
         sensorManager = SensorStreamManager(this) {
             lifecycleScope.launch(Dispatchers.Default) {
                 try {
+                    if (!sensorManager.buffer.ready()) return@launch
                     val output = entityEngine.process(sensorManager.buffer, currentLocation)
                     withContext(Dispatchers.Main) {
                         uiStateHolder?.setCurrent?.invoke(output)
                         uiStateHolder?.addHistory?.invoke(output)
+                        uiStateHolder?.setStatus?.invoke("live")
                     }
                 } catch (e: Exception) {
                     Log.e(SpiritApp.TAG, "Pipeline error", e)
+                    withContext(Dispatchers.Main) {
+                        uiStateHolder?.setStatus?.invoke("pipeline error: " + (e.message ?: "unknown"))
+                    }
                 }
             }
         }
         sensorManager.start()
+        uiStateHolder?.setStatus?.invoke("sensors started - filling buffer...")
     }
 
     override fun onDestroy() {
@@ -182,7 +205,8 @@ class MainActivity : ComponentActivity() {
 
     private data class UiStateHolder(
         val setCurrent: ((EntityOutput?) -> Unit)?,
-        val addHistory: ((EntityOutput) -> Unit)?
+        val addHistory: ((EntityOutput) -> Unit)?,
+        val setStatus: ((String) -> Unit)?
     )
 
     private var uiStateHolder: UiStateHolder? = null
