@@ -65,8 +65,8 @@ class MainActivity : ComponentActivity() {
         var modelsOk = false
         var modelError = ""
         try {
-            jones = JonesRunner(this)
-            sde = SdeRunner(this)
+            jones = JonesRunner()
+            sde = SdeRunner()
             entityEngine = EntityEngine(jones, sde, LlmClient(this))
             modelsOk = true
         } catch (e: Exception) {
