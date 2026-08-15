@@ -7,20 +7,18 @@ import androidx.compose.ui.unit.sp
 import com.spirit.scan.entity.EntityOutput
 
 @Composable
-fun LiveHud(output: EntityOutput?) {
-    if (output == null) {
-        Text(
-            text = "SPIRIT SCAN - Waiting for signal...",
-            color = Color(0xFF7CFFB2),
-            fontSize = 18.sp
-        )
-    } else {
-        val score = (output.jonesScore * 100).toInt()
-        val text = "SPIRIT SCAN - " + output.jonesLabel + " - " + score + "% - " + output.narrative
-        Text(
-            text = text,
-            color = Color(0xFF7CFFB2),
-            fontSize = 18.sp
-        )
+fun LiveHud(output: EntityOutput?, status: String = "") {
+    val text = when {
+        output != null -> {
+            val score = (output.jonesScore * 100).toInt()
+            "SPIRIT SCAN - " + output.jonesLabel + " - " + score + "% - " + output.narrative
+        }
+        status.isNotEmpty() -> "SPIRIT SCAN\n\n" + status
+        else -> "SPIRIT SCAN - Waiting for signal..."
     }
+    Text(
+        text = text,
+        color = Color(0xFF7CFFB2),
+        fontSize = 16.sp
+    )
 }
