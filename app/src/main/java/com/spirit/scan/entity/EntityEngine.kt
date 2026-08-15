@@ -13,7 +13,8 @@ data class EntityOutput(
     val residual: Float = 0f,
     val envelope: Float = 0f,
     val systemOk: Boolean = true,
-    val timestamp: Long = System.currentTimeMillis()
+    val timestamp: Long = System.currentTimeMillis(),
+    val userQuestion: String? = null
 )
 
 class EntityEngine(
@@ -21,23 +22,42 @@ class EntityEngine(
     private val sde: SdeRunner,
     private val llm: LlmClient
 ) {
-    suspend fun process(buffer: CircularBuffer, ctx: LocationContext): EntityOutput {
+    private val history = mutableListOf<AnomalyEvent>()
+    @Volatile var lastQuestion: String? = null
+
+    fun setQuestion(q: String?) {
+        lastQuestion = q?.trim()?.ifEmpty { null }
+    }
+
+    suspend fun process(
+        buffer: CircularBuffer,
+        ctx: LocationContext
+    ): EntityOutput {
         val jonesFeatures = buffer.toJonesFeatures()
         val jr = jones.run(jonesFeatures)
+
+        val event = AnomalyEvent(jr, ctx)
+        history.add(event)
+        if (history.size > 40) history.removeAt(0)
+
         val sdeFeatures = buffer.toSdeFeatures(jr)
         val sr = sde.run(sdeFeatures)
         val sdeState = SdeState(sr)
-        val event = AnomalyEvent(jr, ctx)
-        val prompt = PromptBuilder.build(event, sdeState, ctx)
-        val text = llm.generate(prompt)
+
+        val prompt = PromptBuilder.build(event, sdeState, ctx, lastQuestion)
+        val narrative = llm.generate(prompt)
+
         return EntityOutput(
             jonesLabel = jr.label,
             jonesScore = jr.confidence,
             sdeState = sdeState,
-            narrative = text,
+            narrative = narrative,
             residual = jr.residual,
             envelope = jr.envelope,
-            systemOk = sr.isSystemOk
+            systemOk = sr.isSystemOk,
+            userQuestion = lastQuestion
         )
     }
+
+    fun recentEvents(): List<AnomalyEvent> = history.toList()
 }
