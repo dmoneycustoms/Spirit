@@ -1,6 +1,5 @@
 package com.spirit.scan.ml
 
-import android.content.Context
 import ai.onnxruntime.OnnxTensor
 import ai.onnxruntime.OrtEnvironment
 import ai.onnxruntime.OrtSession
@@ -38,18 +37,16 @@ data class JonesResult(
         }
 }
 
-class JonesRunner(context: Context) : AutoCloseable {
-
+class JonesRunner : AutoCloseable {
     private val env = OrtEnvironment.getEnvironment()
     private val session: OrtSession
 
     init {
-        val bytes = context.assets.open("models/jones.onnx").use { it.readBytes() }
         val opts = OrtSession.SessionOptions().apply {
             setOptimizationLevel(OrtSession.SessionOptions.OptLevel.ALL_OPT)
         }
-        session = env.createSession(bytes, opts)
-        Log.i(SpiritApp.TAG, "JonesRunner loaded")
+        session = env.createSession(JonesModelBytes.bytes, opts)
+        Log.i(SpiritApp.TAG, "JonesRunner loaded from embedded bytes")
     }
 
     fun run(features: Map<String, Float>): JonesResult {
@@ -90,7 +87,6 @@ class JonesRunner(context: Context) : AutoCloseable {
                     else -> false
                 }
             }
-
             return JonesResult(
                 r = f("r"),
                 envelope = f("envelope"),
