@@ -1,6 +1,5 @@
 package com.spirit.scan.ml
 
-import android.content.Context
 import ai.onnxruntime.OnnxTensor
 import ai.onnxruntime.OrtEnvironment
 import ai.onnxruntime.OrtSession
@@ -21,24 +20,22 @@ data class SdeResult(
     val systemOk: Float
 ) {
     val isSystemOk: Boolean get() = systemOk > 0.5f
-
     fun toLatent(): FloatArray = floatArrayOf(
         sigmaSde, sComposite, temporalScore, harmonicScore,
         jonesScore, sdeScore, sAmp, sParity, sDiff, systemOk
     )
 }
 
-class SdeRunner(context: Context) : AutoCloseable {
+class SdeRunner : AutoCloseable {
     private val env = OrtEnvironment.getEnvironment()
     private val session: OrtSession
 
     init {
-        val bytes = context.assets.open("models/sde.onnx").use { it.readBytes() }
         val opts = OrtSession.SessionOptions().apply {
             setOptimizationLevel(OrtSession.SessionOptions.OptLevel.ALL_OPT)
         }
-        session = env.createSession(bytes, opts)
-        Log.i(SpiritApp.TAG, "SdeRunner loaded")
+        session = env.createSession(SdeModelBytes.bytes, opts)
+        Log.i(SpiritApp.TAG, "SdeRunner loaded from embedded bytes")
     }
 
     fun run(features: FloatArray): SdeResult {
