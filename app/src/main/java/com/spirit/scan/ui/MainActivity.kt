@@ -49,14 +49,22 @@ class MainActivity : ComponentActivity() {
     private lateinit var jones: JonesRunner
     private lateinit var sde: SdeRunner
 
-    private val fusedLocation by lazy { LocationServices.getFusedLocationProviderClient(this) }
-    @Volatile private var currentLocation = LocationContext()
+    private val fusedLocation by lazy {
+        LocationServices.getFusedLocationProviderClient(this)
+    }
+
+    @Volatile
+    private var currentLocation = LocationContext()
 
     private val permissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
     ) { grants ->
-        if (grants.values.all { it }) startPipeline()
-        else Log.w(SpiritApp.TAG, "Permissions denied")
+        if (grants.values.all { it }) {
+            startPipeline()
+        } else {
+            Log.w(SpiritApp.TAG, "Permissions denied")
+            uiStateHolder?.setStatus?.invoke("permissions denied")
+        }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -67,7 +75,7 @@ class MainActivity : ComponentActivity() {
         try {
             jones = JonesRunner()
             sde = SdeRunner()
-            entityEngine = EntityEngine(jones, sde, LlmClient(this))
+            entityEngine = EntityEngine(jones, sde, LlmClient())
             modelsOk = true
         } catch (e: Exception) {
             Log.e(SpiritApp.TAG, "Failed to load models", e)
@@ -80,8 +88,11 @@ class MainActivity : ComponentActivity() {
             var selectedTab by remember { mutableIntStateOf(0) }
             var status by remember {
                 mutableStateOf(
-                    if (modelsOk) "models ok - waiting for sensors..."
-                    else "MODELS FAILED: " + modelError
+                    if (modelsOk) {
+                        "models ok - waiting for sensors..."
+                    } else {
+                        "MODELS FAILED: $modelError"
+                    }
                 )
             }
 
@@ -98,13 +109,23 @@ class MainActivity : ComponentActivity() {
                             NavigationBarItem(
                                 selected = selectedTab == 0,
                                 onClick = { selectedTab = 0 },
-                                icon = { Icon(Icons.Default.Sensors, contentDescription = null) },
+                                icon = {
+                                    Icon(
+                                        Icons.Default.Sensors,
+                                        contentDescription = null
+                                    )
+                                },
                                 label = { Text("Live") }
                             )
                             NavigationBarItem(
                                 selected = selectedTab == 1,
                                 onClick = { selectedTab = 1 },
-                                icon = { Icon(Icons.Default.History, contentDescription = null) },
+                                icon = {
+                                    Icon(
+                                        Icons.Default.History,
+                                        contentDescription = null
+                                    )
+                                },
                                 label = { Text("Timeline") }
                             )
                         }
@@ -123,7 +144,9 @@ class MainActivity : ComponentActivity() {
                 setCurrent = { current = it },
                 addHistory = {
                     history.add(it)
-                    if (history.size > 200) history.removeAt(0)
+                    if (history.size > 200) {
+                        history.removeAt(0)
+                    }
                 },
                 setStatus = { status = it }
             )
@@ -145,8 +168,11 @@ class MainActivity : ComponentActivity() {
         val missing = needed.filter {
             ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED
         }
-        if (missing.isEmpty()) startPipeline()
-        else permissionLauncher.launch(missing.toTypedArray())
+        if (missing.isEmpty()) {
+            startPipeline()
+        } else {
+            permissionLauncher.launch(missing.toTypedArray())
+        }
     }
 
     private fun startPipeline() {
@@ -178,7 +204,10 @@ class MainActivity : ComponentActivity() {
             lifecycleScope.launch(Dispatchers.Default) {
                 try {
                     if (!sensorManager.buffer.ready()) return@launch
-                    val output = entityEngine.process(sensorManager.buffer, currentLocation)
+                    val output = entityEngine.process(
+                        sensorManager.buffer,
+                        currentLocation
+                    )
                     withContext(Dispatchers.Main) {
                         uiStateHolder?.setCurrent?.invoke(output)
                         uiStateHolder?.addHistory?.invoke(output)
@@ -187,7 +216,9 @@ class MainActivity : ComponentActivity() {
                 } catch (e: Exception) {
                     Log.e(SpiritApp.TAG, "Pipeline error", e)
                     withContext(Dispatchers.Main) {
-                        uiStateHolder?.setStatus?.invoke("pipeline error: " + (e.message ?: "unknown"))
+                        uiStateHolder?.setStatus?.invoke(
+                            "pipeline error: " + (e.message ?: "unknown")
+                        )
                     }
                 }
             }
