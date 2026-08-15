@@ -110,10 +110,7 @@ class MainActivity : ComponentActivity() {
                                 selected = selectedTab == 0,
                                 onClick = { selectedTab = 0 },
                                 icon = {
-                                    Icon(
-                                        Icons.Default.Sensors,
-                                        contentDescription = null
-                                    )
+                                    Icon(Icons.Default.Sensors, contentDescription = null)
                                 },
                                 label = { Text("Live") }
                             )
@@ -121,10 +118,7 @@ class MainActivity : ComponentActivity() {
                                 selected = selectedTab == 1,
                                 onClick = { selectedTab = 1 },
                                 icon = {
-                                    Icon(
-                                        Icons.Default.History,
-                                        contentDescription = null
-                                    )
+                                    Icon(Icons.Default.History, contentDescription = null)
                                 },
                                 label = { Text("Timeline") }
                             )
@@ -133,7 +127,16 @@ class MainActivity : ComponentActivity() {
                 ) { padding ->
                     Box {
                         when (selectedTab) {
-                            0 -> LiveHud(current, status)
+                            0 -> LiveHud(
+                                output = current,
+                                status = status,
+                                onAsk = { q ->
+                                    if (::entityEngine.isInitialized) {
+                                        entityEngine.setQuestion(q)
+                                        status = "question set - waiting next window..."
+                                    }
+                                }
+                            )
                             1 -> TimelineScreen(history)
                         }
                     }
@@ -144,9 +147,7 @@ class MainActivity : ComponentActivity() {
                 setCurrent = { current = it },
                 addHistory = {
                     history.add(it)
-                    if (history.size > 200) {
-                        history.removeAt(0)
-                    }
+                    if (history.size > 200) history.removeAt(0)
                 },
                 setStatus = { status = it }
             )
