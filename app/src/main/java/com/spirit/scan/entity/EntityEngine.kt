@@ -23,10 +23,20 @@ class EntityEngine(
     private val llm: LlmClient
 ) {
     private val history = mutableListOf<AnomalyEvent>()
-    @Volatile var lastQuestion: String? = null
+
+    @Volatile
+    var lastQuestion: String? = null
+        private set
+
+    private var lastLabel: String? = null
+    private var lastNarrative: String = "Listening..."
+    private var lastAnsweredQuestion: String? = null
+    private var questionPending: Boolean = false
 
     fun setQuestion(q: String?) {
-        lastQuestion = q?.trim()?.ifEmpty { null }
+        val cleaned = q?.trim()?.ifEmpty { null }
+        lastQuestion = cleaned
+        questionPending = cleaned != null
     }
 
     suspend fun process(
@@ -44,18 +54,26 @@ class EntityEngine(
         val sr = sde.run(sdeFeatures)
         val sdeState = SdeState(sr)
 
-        val prompt = PromptBuilder.build(event, sdeState, ctx, lastQuestion)
-        val narrative = llm.generate(prompt)
+        val labelChanged = jr.label != lastLabel
+        val needNewNarrative = labelChanged || questionPending
+
+        if (needNewNarrative) {
+            val prompt = PromptBuilder.build(event, sdeState, ctx, lastQuestion)
+            lastNarrative = llm.generate(prompt)
+            lastLabel = jr.label
+            lastAnsweredQuestion = lastQuestion
+            questionPending = false
+        }
 
         return EntityOutput(
             jonesLabel = jr.label,
             jonesScore = jr.confidence,
             sdeState = sdeState,
-            narrative = narrative,
+            narrative = lastNarrative,
             residual = jr.residual,
             envelope = jr.envelope,
             systemOk = sr.isSystemOk,
-            userQuestion = lastQuestion
+            userQuestion = lastAnsweredQuestion
         )
     }
 
