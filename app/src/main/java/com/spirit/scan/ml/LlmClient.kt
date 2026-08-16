@@ -94,6 +94,13 @@ class LlmClient(
         val hasQ = !question.isNullOrBlank() &&
             !question.equals("No question", ignoreCase = true)
 
+        val residual = extractFloat(p, "residual:")
+        val envelope = extractFloat(p, "envelope:")
+        val sigma = extractFloat(p, "sigma_sde:")
+        val composite = extractFloat(p, "composite:")
+        val camNoise = extractFloat(p, "camera_noise:")
+        val camMotion = extractFloat(p, "camera_motion:")
+
         val label = when {
             p.contains("label: firewall") || p.contains("firewall: true") -> "firewall"
             p.contains("label: harmonic_break") || p.contains("harmonic_ok: false") -> "harmonic_break"
@@ -102,76 +109,89 @@ class LlmClient(
             else -> "stable"
         }
 
-        val camHot = p.contains("camera_motion: 0.") && !p.contains("camera_motion: 0.0")
-        val camNoise = p.contains("camera_noise: 0.") && !p.contains("camera_noise: 0.0")
+        val strength = when {
+            residual > 0.6f || envelope > 0.7f -> "strong"
+            residual > 0.35f || envelope > 0.45f -> "moderate"
+            else -> "weak"
+        }
+
+        val optical = when {
+            camMotion > 0.05f && camNoise > 0.1f -> "Camera shows both motion and noise."
+            camMotion > 0.05f -> "Camera motion is up."
+            camNoise > 0.1f -> "Camera noise is up."
+            else -> "Camera is quiet."
+        }
 
         val field = when (label) {
             "firewall" ->
-                "Sensors report a hard boundary. Values are being clipped instead of drifting freely."
+                "Firewall $strength. The model is hitting a hard clip, residual=" +
+                    "%.2f".format(residual) + ", envelope=" + "%.2f".format(envelope) + "."
             "harmonic_break" ->
-                "Magnetometer rhythm lost coherence. The oscillation pattern no longer lines up with the baseline."
+                "Harmonic break $strength. Oscillation coherence is gone. sigma=" +
+                    "%.2f".format(sigma) + ", composite=" + "%.2f".format(composite) + "."
             "high_residual" ->
-                "Large leftover error after the baseline fit. The simple field model cannot account for this interval."
+                "High residual $strength (" + "%.2f".format(residual) +
+                    "). Baseline cannot explain this window."
             "strong_envelope" ->
-                "Energy is concentrating. Envelope strength is elevated versus the recent window."
+                "Strong envelope (" + "%.2f".format(envelope) +
+                    "). Energy is concentrating, not spreading."
             else ->
-                "Field is near baseline. No strong anomaly signature in this window."
-        }
-
-        val camNote = when {
-            camHot && camNoise -> " Camera also shows motion and noise spikes."
-            camHot -> " Camera motion is elevated."
-            camNoise -> " Camera noise is elevated."
-            else -> ""
+                "Stable window. residual=" + "%.2f".format(residual) +
+                    ", envelope=" + "%.2f".format(envelope) + "."
         }
 
         if (!hasQ) {
-            return field + camNote
+            return field + " " + optical
         }
 
         val q = question!!.lowercase()
-        val answer = when {
-            q.contains("what") && (q.contains("cause") || q.contains("causing") || q.contains("why")) ->
+        return when {
+            q.contains("cause") || q.contains("causing") || q.contains("why") || q.contains("what is") ->
                 when (label) {
                     "firewall" ->
-                        "Most likely a strong local magnetic boundary or active rejection of the baseline model, not a random glitch."
+                        "Likely cause: hard magnetic boundary or saturation against the model threshold. $field $optical"
                     "harmonic_break" ->
-                        "Most likely a disruption in the magnetic oscillation — nearby metal, device interference, or a sudden field shift."
+                        "Likely cause: disrupted mag rhythm (metal, EMI, or abrupt field shift). $field $optical"
                     "high_residual" ->
-                        "Most likely an unmodeled disturbance in the sensor stream that the baseline cannot absorb."
+                        "Likely cause: disturbance the baseline model cannot absorb. $field $optical"
                     "strong_envelope" ->
-                        "Most likely a concentrated energy pocket in the current window rather than broad noise."
+                        "Likely cause: localized energy concentration in this window. $field $optical"
                     else ->
-                        "No strong causal anomaly is present; this may be ordinary environmental variance."
+                        "No strong anomaly cause in this window. $field $optical"
                 }
 
             q.contains("entity") || q.contains("spirit") || q.contains("ghost") || q.contains("presence") ->
-                "Symbolic reading only: the sensors show a $label pattern$camNote. That is not proof of an entity."
+                "Symbolic only: pattern is $label ($strength). Not evidence of an entity. $optical"
 
             q.contains("safe") || q.contains("danger") || q.contains("threat") ->
-                when (label) {
-                    "firewall", "harmonic_break", "high_residual" ->
-                        "Treat as an unstable interval. No physical danger is claimed; readings are simply abnormal."
-                    else ->
-                        "No elevated anomaly. Field looks ordinary for now."
-                }
+                if (label == "stable")
+                    "No elevated anomaly. Field looks ordinary. $optical"
+                else
+                    "Unstable interval ($label, $strength). No physical danger claimed — readings are abnormal. $optical"
 
             q.contains("camera") || q.contains("visual") || q.contains("see") ->
-                if (camHot || camNoise)
-                    "Camera features are active (motion/noise). Optical disturbance lines up with the $label field state."
-                else
-                    "Camera features are quiet. The $label state is coming from magnetometer/accelerometer, not the camera."
+                "$optical Field label is $label. Optical features are separate from the magnetometer call."
 
-            q.contains("where") || q.contains("direction") || q.contains("location") ->
-                "Location is only a context tag here. The anomaly is in the sensor field state ($label), not a mapped place marker."
-
-            q.contains("how long") || q.contains("duration") || q.contains("still") ->
-                "This app reports window-by-window state. If $label persists across several timeline entries, the condition is ongoing."
+            q.contains("how long") || q.contains("still") || q.contains("duration") ->
+                "State is per window. If Timeline keeps showing $label, it is persisting. Current strength: $strength."
 
             else ->
-                "On \"$question\": current field state is $label. $field$camNote"
+                "Q \"$question\" → $label ($strength). $field $optical"
         }
-
-        return answer
     }
+
+    private fun extractFloat(text: String, key: String): Float {
+        val idx = text.indexOf(key)
+        if (idx < 0) return 0f
+        val after = text.substring(idx + key.length).trim().start
+        val num = StringBuilder()
+        for (c in after) {
+            if (c.isDigit() || c == '.' || c == '-' || c == '+') num.append(c)
+            else if (num.isNotEmpty()) break
+        }
+        return num.toString().toFloatOrNull() ?: 0f
+    }
+
+    private val String.start: String
+        get() = this
 }
