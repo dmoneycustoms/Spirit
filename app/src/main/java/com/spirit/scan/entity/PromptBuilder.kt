@@ -43,6 +43,9 @@ Context:
 - accuracy_m: ${ctx.accuracy}
 - location: ${ctx.locationLabel}
 - time: ${ctx.timeLabel}
+- camera_noise: ${ctx.cameraNoise}
+- camera_motion: ${ctx.cameraMotion}
+- camera_brightness: ${ctx.cameraBrightness}
 
 Task:
 1. Answer the user question using the anomaly and dynamics.
