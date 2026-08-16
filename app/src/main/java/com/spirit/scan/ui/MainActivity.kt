@@ -62,20 +62,29 @@ class MainActivity : ComponentActivity() {
     @Volatile
     private var lastCamera = CameraFeatures()
 
+    @Volatile
+    private var cameraStatus = "camera: off"
+
     private val permissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
     ) { grants ->
-        if (grants[Manifest.permission.ACCESS_FINE_LOCATION] == true ||
+        val coreOk =
+            grants[Manifest.permission.ACCESS_FINE_LOCATION] == true ||
             grants[Manifest.permission.ACCESS_COARSE_LOCATION] == true ||
             grants[Manifest.permission.BODY_SENSORS] == true
-        ) {
+
+        if (coreOk) {
             startPipeline()
         } else {
             Log.w(SpiritApp.TAG, "Core permissions denied")
             uiStateHolder?.setStatus?.invoke("permissions denied")
         }
+
         if (grants[Manifest.permission.CAMERA] == true) {
             startCamera()
+        } else {
+            cameraStatus = "camera: permission denied"
+            uiStateHolder?.setStatus?.invoke(cameraStatus)
         }
     }
 
@@ -129,7 +138,7 @@ class MainActivity : ComponentActivity() {
                             )
                         }
                     }
-                ) { padding ->
+                ) {
                     Box {
                         when (selectedTab) {
                             0 -> LiveHud(
@@ -138,7 +147,7 @@ class MainActivity : ComponentActivity() {
                                 onAsk = { q ->
                                     if (::entityEngine.isInitialized) {
                                         entityEngine.setQuestion(q)
-                                        status = "question set - waiting next window..."
+                                        status = "question set - next window..."
                                     }
                                 }
                             )
@@ -152,7 +161,7 @@ class MainActivity : ComponentActivity() {
                 setCurrent = { current = it },
                 addHistory = {
                     history.add(it)
-                    if (history.size > 200) history.removeAt(0)
+                    if (history.size > 100) history.removeAt(0)
                 },
                 setStatus = { status = it }
             )
@@ -186,12 +195,29 @@ class MainActivity : ComponentActivity() {
     private fun startCamera() {
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA)
             != PackageManager.PERMISSION_GRANTED
-        ) return
-        if (cameraBridge != null) return
-        cameraBridge = CameraBridge(this, this) { features ->
-            lastCamera = features
+        ) {
+            cameraStatus = "camera: permission denied"
+            return
         }
-        cameraBridge?.start()
+        if (cameraBridge != null) return
+
+        try {
+            cameraBridge = CameraBridge(this, this) { features ->
+                lastCamera = features
+                cameraStatus =
+                    "camera: on  noise=" +
+                        "%.2f".format(features.noiseVariance) +
+                        " motion=" +
+                        "%.2f".format(features.motionMagnitude)
+            }
+            cameraBridge?.start()
+            cameraStatus = "camera: starting..."
+            uiStateHolder?.setStatus?.invoke(cameraStatus)
+        } catch (e: Exception) {
+            Log.e(SpiritApp.TAG, "startCamera failed", e)
+            cameraStatus = "camera: failed " + (e.message ?: "")
+            uiStateHolder?.setStatus?.invoke(cameraStatus)
+        }
     }
 
     private fun startPipeline() {
@@ -243,7 +269,8 @@ class MainActivity : ComponentActivity() {
                     withContext(Dispatchers.Main) {
                         uiStateHolder?.setCurrent?.invoke(output)
                         uiStateHolder?.addHistory?.invoke(output)
-                        uiStateHolder?.setStatus?.invoke("live")
+                        val camLine = cameraStatus
+                        uiStateHolder?.setStatus?.invoke("live | " + camLine)
                     }
                 } catch (e: Exception) {
                     Log.e(SpiritApp.TAG, "Pipeline error", e)
@@ -256,7 +283,7 @@ class MainActivity : ComponentActivity() {
             }
         }
         sensorManager.start()
-        uiStateHolder?.setStatus?.invoke("sensors started - filling buffer...")
+        uiStateHolder?.setStatus?.invoke("sensors started | " + cameraStatus)
     }
 
     override fun onDestroy() {
