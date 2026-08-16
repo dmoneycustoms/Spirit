@@ -21,6 +21,9 @@ class SensorStreamManager(
     private var running = false
     private var lastEmitMs = 0L
 
+    // Slower updates so you can read labels / history
+    private val emitIntervalMs = 1500L
+
     fun start() {
         if (running) return
         if (mag == null || accel == null) {
@@ -48,7 +51,7 @@ class SensorStreamManager(
         }
         if (buffer.ready()) {
             val now = System.currentTimeMillis()
-            if (now - lastEmitMs > 200) {
+            if (now - lastEmitMs >= emitIntervalMs) {
                 lastEmitMs = now
                 onWindowReady()
             }
