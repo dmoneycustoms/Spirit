@@ -4,6 +4,9 @@ import android.Manifest
 import android.content.Context
 import android.content.pm.PackageManager
 import android.graphics.Color
+import android.media.AudioFormat
+import android.media.AudioRecord
+import android.media.MediaRecorder
 import android.os.Build
 import android.os.Bundle
 import android.os.VibrationEffect
@@ -23,6 +26,7 @@ import android.widget.ProgressBar
 import android.widget.TextView
 import androidx.activity.ComponentActivity
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.camera.view.PreviewView
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import com.google.android.gms.location.LocationServices
@@ -41,6 +45,8 @@ import com.spirit.scan.ml.LlmClient
 import com.spirit.scan.ml.SdeRunner
 import com.spirit.scan.sensor.SensorStreamManager
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -49,6 +55,7 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import java.util.concurrent.atomic.AtomicBoolean
+import kotlin.math.sqrt
 
 class MainActivity : ComponentActivity() {
 
@@ -70,6 +77,11 @@ class MainActivity : ComponentActivity() {
     @Volatile private var currentLocation = LocationContext()
     @Volatile private var lastCamera = CameraFeatures()
     @Volatile private var cameraStatus = "camera: off"
+    @Volatile private var micOn = false
+    @Volatile private var micLevel = 0f
+
+    private var micJob: Job? = null
+    private var audioRecord: AudioRecord? = null
 
     private lateinit var content: FrameLayout
     private lateinit var tabLive: TextView
@@ -77,6 +89,7 @@ class MainActivity : ComponentActivity() {
     private lateinit var livePanel: View
     private lateinit var timelinePanel: View
 
+    private lateinit var cameraPreview: PreviewView
     private lateinit var activityBar: ProgressBar
     private lateinit var labelText: TextView
     private lateinit var metaText: TextView
@@ -85,6 +98,9 @@ class MainActivity : ComponentActivity() {
     private lateinit var statusText: TextView
     private lateinit var askInput: EditText
     private lateinit var askButton: Button
+    private lateinit var micToggle: Button
+    private lateinit var micBadge: TextView
+    private lateinit var camBadge: TextView
     private lateinit var timelineList: ListView
 
     private val history = mutableListOf<EntityOutput>()
@@ -98,12 +114,12 @@ class MainActivity : ComponentActivity() {
             grants[Manifest.permission.ACCESS_COARSE_LOCATION] == true ||
             grants[Manifest.permission.BODY_SENSORS] == true
 
-        if (coreOk) startPipeline()
-        else setStatus("permissions denied")
+        if (coreOk) startPipeline() else setStatus("permissions denied")
 
         if (grants[Manifest.permission.CAMERA] == true) startCamera()
         else {
             cameraStatus = "camera: permission denied"
+            updateBadges()
             setStatus(cameraStatus)
         }
     }
@@ -122,6 +138,7 @@ class MainActivity : ComponentActivity() {
         content.addView(timelinePanel)
         timelinePanel.visibility = View.GONE
 
+        cameraPreview = livePanel.findViewById(R.id.cameraPreview)
         activityBar = livePanel.findViewById(R.id.activityBar)
         labelText = livePanel.findViewById(R.id.labelText)
         metaText = livePanel.findViewById(R.id.metaText)
@@ -130,6 +147,9 @@ class MainActivity : ComponentActivity() {
         statusText = livePanel.findViewById(R.id.statusText)
         askInput = livePanel.findViewById(R.id.askInput)
         askButton = livePanel.findViewById(R.id.askButton)
+        micToggle = livePanel.findViewById(R.id.micToggle)
+        micBadge = livePanel.findViewById(R.id.micBadge)
+        camBadge = livePanel.findViewById(R.id.camBadge)
         timelineList = timelinePanel.findViewById(R.id.timelineList)
 
         timelineAdapter = TimelineAdapter()
@@ -137,8 +157,8 @@ class MainActivity : ComponentActivity() {
 
         tabLive.setOnClickListener { showLive() }
         tabTimeline.setOnClickListener { showTimeline() }
-
         askButton.setOnClickListener { submitQuestion() }
+        micToggle.setOnClickListener { toggleMic() }
         askInput.setOnEditorActionListener { _, actionId, _ ->
             if (actionId == EditorInfo.IME_ACTION_SEND) {
                 submitQuestion()
@@ -158,6 +178,7 @@ class MainActivity : ComponentActivity() {
             setStatus("MODELS FAILED: " + (e.message ?: "unknown"))
         }
 
+        updateBadges()
         if (modelsOk) requestPermissionsAndStart()
     }
 
@@ -188,6 +209,29 @@ class MainActivity : ComponentActivity() {
 
     private fun setStatus(msg: String) {
         runOnUiThread { statusText.text = msg }
+    }
+
+    private fun updateBadges() {
+        runOnUiThread {
+            if (micOn) {
+                micBadge.text = "MIC ON " + ((micLevel * 100).toInt()) + "%"
+                micBadge.setTextColor(Color.parseColor("#7CFFB2"))
+                micToggle.text = "MIC: ON"
+            } else {
+                micBadge.text = "MIC OFF"
+                micBadge.setTextColor(Color.parseColor("#FF6B6B"))
+                micToggle.text = "MIC: OFF"
+            }
+
+            val camRunning = cameraBridge?.isRunning == true
+            if (camRunning) {
+                camBadge.text = "CAM ON"
+                camBadge.setTextColor(Color.parseColor("#7CFFB2"))
+            } else {
+                camBadge.text = "CAM OFF"
+                camBadge.setTextColor(Color.parseColor("#FF6B6B"))
+            }
+        }
     }
 
     private fun renderOutput(output: EntityOutput) {
@@ -222,7 +266,9 @@ class MainActivity : ComponentActivity() {
         narrativeText.text = output.narrative
         questionText.text =
             if (!output.userQuestion.isNullOrBlank()) "Q: " + output.userQuestion else ""
-        statusText.text = "live | " + cameraStatus
+        statusText.text = "live | " + cameraStatus +
+            if (micOn) " | mic=" + ((micLevel * 100).toInt()) + "%" else " | mic=off"
+        updateBadges()
     }
 
     private fun requestPermissionsAndStart() {
@@ -257,6 +303,7 @@ class MainActivity : ComponentActivity() {
             != PackageManager.PERMISSION_GRANTED
         ) {
             cameraStatus = "camera: permission denied"
+            updateBadges()
             return
         }
         if (cameraBridge != null) return
@@ -268,14 +315,87 @@ class MainActivity : ComponentActivity() {
                         " m=" + format2(features.motionMagnitude) +
                         " b=" + format2(features.brightness)
             }
-            cameraBridge?.start()
+            cameraBridge?.start(cameraPreview)
             cameraStatus = "camera: starting..."
             setStatus(cameraStatus)
+            updateBadges()
         } catch (e: Exception) {
             Log.e(SpiritApp.TAG, "startCamera failed", e)
             cameraStatus = "camera: failed " + (e.message ?: e.javaClass.simpleName)
             setStatus(cameraStatus)
+            updateBadges()
         }
+    }
+
+    private fun toggleMic() {
+        if (micOn) stopMic() else startMic()
+    }
+
+    private fun startMic() {
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO)
+            != PackageManager.PERMISSION_GRANTED
+        ) {
+            setStatus("mic permission denied")
+            return
+        }
+        if (micOn) return
+        val sampleRate = 16000
+        val minBuf = AudioRecord.getMinBufferSize(
+            sampleRate,
+            AudioFormat.CHANNEL_IN_MONO,
+            AudioFormat.ENCODING_PCM_16BIT
+        )
+        if (minBuf <= 0) {
+            setStatus("mic unavailable")
+            return
+        }
+        try {
+            audioRecord = AudioRecord(
+                MediaRecorder.AudioSource.MIC,
+                sampleRate,
+                AudioFormat.CHANNEL_IN_MONO,
+                AudioFormat.ENCODING_PCM_16BIT,
+                minBuf * 2
+            )
+            audioRecord?.startRecording()
+            micOn = true
+            updateBadges()
+            micJob = lifecycleScope.launch(Dispatchers.Default) {
+                val buf = ShortArray(minBuf)
+                while (isActive && micOn) {
+                    val n = audioRecord?.read(buf, 0, buf.size) ?: break
+                    if (n > 0) {
+                        var sum = 0.0
+                        for (i in 0 until n) {
+                            val v = buf[i].toDouble()
+                            sum += v * v
+                        }
+                        val rms = sqrt(sum / n) / 32768.0
+                        micLevel = rms.toFloat().coerceIn(0f, 1f)
+                        withContext(Dispatchers.Main) { updateBadges() }
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(SpiritApp.TAG, "mic start failed", e)
+            micOn = false
+            setStatus("mic failed: " + (e.message ?: e.javaClass.simpleName))
+            updateBadges()
+        }
+    }
+
+    private fun stopMic() {
+        micOn = false
+        micJob?.cancel()
+        micJob = null
+        try {
+            audioRecord?.stop()
+            audioRecord?.release()
+        } catch (_: Exception) {
+        }
+        audioRecord = null
+        micLevel = 0f
+        updateBadges()
     }
 
     private fun startPipeline() {
@@ -399,6 +519,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
+        stopMic()
         if (::sensorManager.isInitialized) sensorManager.stop()
         cameraBridge?.stop()
         spiritAudio?.stop()
@@ -408,20 +529,17 @@ class MainActivity : ComponentActivity() {
 
     private inner class TimelineAdapter : BaseAdapter() {
         private val fmt = SimpleDateFormat("HH:mm:ss", Locale.getDefault())
-
         override fun getCount(): Int = history.size
         override fun getItem(position: Int): EntityOutput =
             history[history.size - 1 - position]
         override fun getItemId(position: Int): Long = position.toLong()
-
         override fun getView(position: Int, convertView: View?, parent: ViewGroup): View {
             val view = convertView ?: LayoutInflater.from(this@MainActivity)
                 .inflate(R.layout.item_timeline, parent, false)
             val item = getItem(position)
-            val title = view.findViewById<TextView>(R.id.itemTitle)
-            val body = view.findViewById<TextView>(R.id.itemBody)
-            title.text = fmt.format(Date(item.timestamp)) + "  " + item.jonesLabel
-            body.text = item.narrative
+            view.findViewById<TextView>(R.id.itemTitle).text =
+                fmt.format(Date(item.timestamp)) + "  " + item.jonesLabel
+            view.findViewById<TextView>(R.id.itemBody).text = item.narrative
             return view
         }
     }
