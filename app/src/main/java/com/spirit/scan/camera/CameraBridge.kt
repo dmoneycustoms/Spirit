@@ -36,10 +36,9 @@ class CameraBridge(
                 provider = cameraProvider
                 cameraProvider.unbindAll()
 
-                val preview = Preview.Builder().build().also { p ->
-                    if (previewView != null) {
-                        p.surfaceProvider = previewView.surfaceProvider
-                    }
+                val preview = Preview.Builder().build()
+                if (previewView != null) {
+                    preview.setSurfaceProvider(previewView.surfaceProvider)
                 }
 
                 val analysis = ImageAnalysis.Builder()
