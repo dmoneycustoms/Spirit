@@ -10,9 +10,6 @@ import androidx.lifecycle.LifecycleOwner
 import com.spirit.scan.SpiritApp
 import java.util.concurrent.Executors
 
-/**
- * Optional camera pipeline. Safe to leave stopped if permission denied.
- */
 class CameraBridge(
     private val context: Context,
     private val lifecycleOwner: LifecycleOwner,
@@ -20,7 +17,9 @@ class CameraBridge(
 ) {
     private val executor = Executors.newSingleThreadExecutor()
     private var provider: ProcessCameraProvider? = null
-    @Volatile var lastFeatures: CameraFeatures = CameraFeatures()
+
+    @Volatile
+    var lastFeatures: CameraFeatures = CameraFeatures()
         private set
 
     fun start() {
