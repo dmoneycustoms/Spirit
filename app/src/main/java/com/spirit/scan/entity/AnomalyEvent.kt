@@ -8,7 +8,10 @@ data class LocationContext(
     val accuracy: Float = 0f,
     val locationLabel: String = "unknown",
     val timeLabel: String = "",
-    val timestamp: Long = System.currentTimeMillis()
+    val timestamp: Long = System.currentTimeMillis(),
+    val cameraNoise: Float = 0f,
+    val cameraMotion: Float = 0f,
+    val cameraBrightness: Float = 0f
 )
 
 data class AnomalyEvent(
