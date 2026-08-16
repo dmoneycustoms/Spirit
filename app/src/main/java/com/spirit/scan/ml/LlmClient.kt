@@ -116,7 +116,7 @@ class LlmClient(
         }
 
         val optical = when {
-            camMotion > 0.05f && camNoise > 0.1f -> "Camera shows both motion and noise."
+            camMotion > 0.05f && camNoise > 0.1f -> "Camera shows motion and noise."
             camMotion > 0.05f -> "Camera motion is up."
             camNoise > 0.1f -> "Camera noise is up."
             else -> "Camera is quiet."
@@ -124,20 +124,20 @@ class LlmClient(
 
         val field = when (label) {
             "firewall" ->
-                "Firewall $strength. The model is hitting a hard clip, residual=" +
-                    "%.2f".format(residual) + ", envelope=" + "%.2f".format(envelope) + "."
+                "Firewall " + strength + ". Hard clip on the model. residual=" +
+                    format(residual) + " envelope=" + format(envelope) + "."
             "harmonic_break" ->
-                "Harmonic break $strength. Oscillation coherence is gone. sigma=" +
-                    "%.2f".format(sigma) + ", composite=" + "%.2f".format(composite) + "."
+                "Harmonic break " + strength + ". Coherence lost. sigma=" +
+                    format(sigma) + " composite=" + format(composite) + "."
             "high_residual" ->
-                "High residual $strength (" + "%.2f".format(residual) +
+                "High residual " + strength + " (" + format(residual) +
                     "). Baseline cannot explain this window."
             "strong_envelope" ->
-                "Strong envelope (" + "%.2f".format(envelope) +
-                    "). Energy is concentrating, not spreading."
+                "Strong envelope (" + format(envelope) +
+                    "). Energy is concentrating."
             else ->
-                "Stable window. residual=" + "%.2f".format(residual) +
-                    ", envelope=" + "%.2f".format(envelope) + "."
+                "Stable window. residual=" + format(residual) +
+                    " envelope=" + format(envelope) + "."
         }
 
         if (!hasQ) {
@@ -146,52 +146,58 @@ class LlmClient(
 
         val q = question!!.lowercase()
         return when {
-            q.contains("cause") || q.contains("causing") || q.contains("why") || q.contains("what is") ->
+            q.contains("cause") || q.contains("causing") || q.contains("why") ||
+                q.contains("what is") || q.contains("influencing") ->
                 when (label) {
                     "firewall" ->
-                        "Likely cause: hard magnetic boundary or saturation against the model threshold. $field $optical"
+                        "Likely cause: magnetic boundary or model saturation. " + field + " " + optical
                     "harmonic_break" ->
-                        "Likely cause: disrupted mag rhythm (metal, EMI, or abrupt field shift). $field $optical"
+                        "Likely cause: disrupted mag rhythm (metal, EMI, sudden shift). " + field + " " + optical
                     "high_residual" ->
-                        "Likely cause: disturbance the baseline model cannot absorb. $field $optical"
+                        "Likely cause: disturbance the baseline cannot absorb. " + field + " " + optical
                     "strong_envelope" ->
-                        "Likely cause: localized energy concentration in this window. $field $optical"
+                        "Likely cause: localized energy concentration. " + field + " " + optical
                     else ->
-                        "No strong anomaly cause in this window. $field $optical"
+                        "No strong anomaly cause right now. " + field + " " + optical
                 }
 
             q.contains("entity") || q.contains("spirit") || q.contains("ghost") || q.contains("presence") ->
-                "Symbolic only: pattern is $label ($strength). Not evidence of an entity. $optical"
+                "Symbolic only: pattern is " + label + " (" + strength + "). Not proof of an entity. " + optical
 
             q.contains("safe") || q.contains("danger") || q.contains("threat") ->
                 if (label == "stable")
-                    "No elevated anomaly. Field looks ordinary. $optical"
+                    "No elevated anomaly. " + optical
                 else
-                    "Unstable interval ($label, $strength). No physical danger claimed — readings are abnormal. $optical"
+                    "Unstable interval (" + label + ", " + strength + "). Abnormal readings, not a claimed physical threat. " + optical
 
             q.contains("camera") || q.contains("visual") || q.contains("see") ->
-                "$optical Field label is $label. Optical features are separate from the magnetometer call."
+                optical + " Field label is " + label + "."
 
             q.contains("how long") || q.contains("still") || q.contains("duration") ->
-                "State is per window. If Timeline keeps showing $label, it is persisting. Current strength: $strength."
+                "Per-window state. If Timeline keeps showing " + label + ", it is persisting. Strength: " + strength + "."
 
             else ->
-                "Q \"$question\" → $label ($strength). $field $optical"
+                "Q \"" + question + "\" -> " + label + " (" + strength + "). " + field + " " + optical
         }
     }
 
     private fun extractFloat(text: String, key: String): Float {
         val idx = text.indexOf(key)
         if (idx < 0) return 0f
-        val after = text.substring(idx + key.length).trim().start
+        val after = text.substring(idx + key.length).trim()
         val num = StringBuilder()
         for (c in after) {
-            if (c.isDigit() || c == '.' || c == '-' || c == '+') num.append(c)
-            else if (num.isNotEmpty()) break
+            if (c.isDigit() || c == '.' || c == '-' || c == '+') {
+                num.append(c)
+            } else if (num.isNotEmpty()) {
+                break
+            }
         }
         return num.toString().toFloatOrNull() ?: 0f
     }
 
-    private val String.start: String
-        get() = this
+    private fun format(v: Float): String {
+        val scaled = (v * 100f).toInt() / 100f
+        return scaled.toString()
+    }
 }
