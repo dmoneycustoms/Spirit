@@ -22,7 +22,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Modifier.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -40,7 +39,7 @@ fun LiveHud(
     var question by remember { mutableStateOf("") }
 
     Column(
-        modifier = Modifier
+        modifier = androidx.compose.ui.Modifier.Modifier
             .fillMaxSize()
             .background(Color(0xFF0A0A0F))
             .padding(16.dp)
@@ -53,21 +52,27 @@ fun LiveHud(
             letterSpacing = 4.sp
         )
 
-        Spacer(modifier = Modifier.height(16.dp))
+        Spacer(
+            modifier = androidx.compose.ui.Modifier.Modifier.height(16.dp)
+        )
 
         Card(
             colors = CardDefaults.cardColors(containerColor = Color(0xFF16161E)),
             shape = RoundedCornerShape(12.dp),
-            modifier = Modifier.fillMaxWidth()
+            modifier = androidx.compose.ui.Modifier.Modifier.fillMaxWidth()
         ) {
-            Column(modifier = Modifier.padding(16.dp)) {
+            Column(
+                modifier = androidx.compose.ui.Modifier.Modifier.padding(16.dp)
+            ) {
                 Text(
                     text = "FIELD STATE",
                     color = Color(0xFFAAAAAA),
                     fontSize = 12.sp,
                     letterSpacing = 2.sp
                 )
-                Spacer(modifier = Modifier.height(8.dp))
+                Spacer(
+                    modifier = androidx.compose.ui.Modifier.Modifier.height(8.dp)
+                )
 
                 if (output != null) {
                     Text(
@@ -97,21 +102,27 @@ fun LiveHud(
             }
         }
 
-        Spacer(modifier = Modifier.height(12.dp))
+        Spacer(
+            modifier = androidx.compose.ui.Modifier.Modifier.height(12.dp)
+        )
 
         Card(
             colors = CardDefaults.cardColors(containerColor = Color(0xFF16161E)),
             shape = RoundedCornerShape(12.dp),
-            modifier = Modifier.fillMaxWidth()
+            modifier = androidx.compose.ui.Modifier.Modifier.fillMaxWidth()
         ) {
-            Column(modifier = Modifier.padding(16.dp)) {
+            Column(
+                modifier = androidx.compose.ui.Modifier.Modifier.padding(16.dp)
+            ) {
                 Text(
                     text = "ENTITY CHANNEL",
                     color = Color(0xFFAAAAAA),
                     fontSize = 12.sp,
                     letterSpacing = 2.sp
                 )
-                Spacer(modifier = Modifier.height(10.dp))
+                Spacer(
+                    modifier = androidx.compose.ui.Modifier.Modifier.height(10.dp)
+                )
                 Text(
                     text = output?.narrative ?: "Listening...",
                     color = Color(0xFFE0E0E0),
@@ -119,7 +130,9 @@ fun LiveHud(
                     lineHeight = 22.sp
                 )
                 if (!output?.userQuestion.isNullOrBlank()) {
-                    Spacer(modifier = Modifier.height(8.dp))
+                    Spacer(
+                        modifier = androidx.compose.ui.Modifier.Modifier.height(8.dp)
+                    )
                     Text(
                         text = "Q: " + (output?.userQuestion ?: ""),
                         color = Color(0xFF888888),
@@ -129,7 +142,9 @@ fun LiveHud(
             }
         }
 
-        Spacer(modifier = Modifier.height(16.dp))
+        Spacer(
+            modifier = androidx.compose.ui.Modifier.Modifier.height(16.dp)
+        )
 
         Text(
             text = "ASK THE FIELD",
@@ -137,12 +152,14 @@ fun LiveHud(
             fontSize = 12.sp,
             letterSpacing = 2.sp
         )
-        Spacer(modifier = Modifier.height(8.dp))
+        Spacer(
+            modifier = androidx.compose.ui.Modifier.Modifier.height(8.dp)
+        )
 
         OutlinedTextField(
             value = question,
             onValueChange = { question = it },
-            modifier = Modifier.fillMaxWidth(),
+            modifier = androidx.compose.ui.Modifier.Modifier.fillMaxWidth(),
             placeholder = {
                 Text("What is influencing this reading?", color = Color(0xFF666666))
             },
@@ -166,7 +183,9 @@ fun LiveHud(
             )
         )
 
-        Spacer(modifier = Modifier.height(8.dp))
+        Spacer(
+            modifier = androidx.compose.ui.Modifier.Modifier.height(8.dp)
+        )
 
         Button(
             onClick = {
@@ -180,7 +199,7 @@ fun LiveHud(
                 containerColor = Color(0xFF1A3A2A),
                 contentColor = Color(0xFF7CFFB2)
             ),
-            modifier = Modifier.fillMaxWidth()
+            modifier = androidx.compose.ui.Modifier.Modifier.fillMaxWidth()
         ) {
             Text("ASK")
         }
