@@ -20,8 +20,6 @@ class SensorStreamManager(
     val buffer = CircularBuffer(64)
     private var running = false
     private var lastEmitMs = 0L
-
-    // Slower updates so you can read labels / history
     private val emitIntervalMs = 1500L
 
     fun start() {
