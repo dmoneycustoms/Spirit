@@ -76,8 +76,9 @@ fun LiveHud(
                         fontSize = 22.sp,
                         fontWeight = FontWeight.Bold
                     )
+                    val score = (output.jonesScore * 100).toInt()
                     Text(
-                        text = "${(output.jonesScore * 100).toInt()}%  residual ${"%.2f".format(output.residual)}",
+                        text = score.toString() + "% residual " + output.residual,
                         color = Color(0xFFCCCCCC),
                         fontSize = 14.sp
                     )
@@ -120,7 +121,7 @@ fun LiveHud(
                 if (!output?.userQuestion.isNullOrBlank()) {
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(
-                        text = "Q: ${output?.userQuestion}",
+                        text = "Q: " + (output?.userQuestion ?: ""),
                         color = Color(0xFF888888),
                         fontSize = 12.sp
                     )
