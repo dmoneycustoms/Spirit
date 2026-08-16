@@ -6,10 +6,6 @@ import androidx.camera.core.ImageProxy
 import com.spirit.scan.SpiritApp
 import kotlin.math.abs
 
-/**
- * Lightweight analyzer: estimates brightness + crude motion proxy from luma.
- * Does not claim ghost detection — only disturbance features for the pipeline.
- */
 class CameraAnalyzer(
     private val onFeatures: (CameraFeatures) -> Unit
 ) : ImageAnalysis.Analyzer {
@@ -26,7 +22,6 @@ class CameraAnalyzer(
             val bytes = ByteArray(buffer.remaining())
             buffer.get(bytes)
 
-            // Sample every Nth byte for speed
             var sum = 0L
             var count = 0
             var i = 0
@@ -41,7 +36,6 @@ class CameraAnalyzer(
             val motion = if (lastAvg >= 0f) abs(avg - lastAvg) / 255f else 0f
             lastAvg = avg
 
-            // crude noise proxy: high-frequency-ish spread on samples
             var spread = 0f
             if (count > 1) {
                 var j = 0
