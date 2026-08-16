@@ -4,7 +4,9 @@ import android.content.Context
 import android.util.Log
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageAnalysis
+import androidx.camera.core.Preview
 import androidx.camera.lifecycle.ProcessCameraProvider
+import androidx.camera.view.PreviewView
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.LifecycleOwner
 import com.spirit.scan.SpiritApp
@@ -22,13 +24,23 @@ class CameraBridge(
     var lastFeatures: CameraFeatures = CameraFeatures()
         private set
 
-    fun start() {
+    @Volatile
+    var isRunning: Boolean = false
+        private set
+
+    fun start(previewView: PreviewView?) {
         val future = ProcessCameraProvider.getInstance(context)
         future.addListener({
             try {
                 val cameraProvider = future.get()
                 provider = cameraProvider
                 cameraProvider.unbindAll()
+
+                val preview = Preview.Builder().build().also { p ->
+                    if (previewView != null) {
+                        p.surfaceProvider = previewView.surfaceProvider
+                    }
+                }
 
                 val analysis = ImageAnalysis.Builder()
                     .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
@@ -42,10 +54,13 @@ class CameraBridge(
                 cameraProvider.bindToLifecycle(
                     lifecycleOwner,
                     CameraSelector.DEFAULT_BACK_CAMERA,
+                    preview,
                     analysis
                 )
-                Log.i(SpiritApp.TAG, "CameraBridge started")
+                isRunning = true
+                Log.i(SpiritApp.TAG, "CameraBridge started with preview")
             } catch (e: Exception) {
+                isRunning = false
                 Log.e(SpiritApp.TAG, "CameraBridge failed", e)
             }
         }, ContextCompat.getMainExecutor(context))
@@ -56,6 +71,7 @@ class CameraBridge(
             provider?.unbindAll()
         } catch (_: Exception) {
         }
+        isRunning = false
         Log.i(SpiritApp.TAG, "CameraBridge stopped")
     }
 }
