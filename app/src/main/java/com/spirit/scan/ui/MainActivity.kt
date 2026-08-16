@@ -205,7 +205,7 @@ class MainActivity : ComponentActivity() {
             cameraBridge = CameraBridge(this, this) { features ->
                 lastCamera = features
                 cameraStatus =
-                    "camera: on  noise=" +
+                    "camera: on noise=" +
                         "%.2f".format(features.noiseVariance) +
                         " motion=" +
                         "%.2f".format(features.motionMagnitude)
@@ -269,8 +269,7 @@ class MainActivity : ComponentActivity() {
                     withContext(Dispatchers.Main) {
                         uiStateHolder?.setCurrent?.invoke(output)
                         uiStateHolder?.addHistory?.invoke(output)
-                        val camLine = cameraStatus
-                        uiStateHolder?.setStatus?.invoke("live | " + camLine)
+                        uiStateHolder?.setStatus?.invoke("live | " + cameraStatus)
                     }
                 } catch (e: Exception) {
                     Log.e(SpiritApp.TAG, "Pipeline error", e)
