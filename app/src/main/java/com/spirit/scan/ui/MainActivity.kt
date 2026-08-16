@@ -1,8 +1,13 @@
 package com.spirit.scan.ui
 
 import android.Manifest
+import android.content.Context
 import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
+import android.os.VibrationEffect
+import android.os.Vibrator
+import android.os.VibratorManager
 import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -31,6 +36,7 @@ import com.google.android.gms.location.LocationServices
 import com.google.android.gms.location.Priority
 import com.google.android.gms.tasks.CancellationTokenSource
 import com.spirit.scan.SpiritApp
+import com.spirit.scan.audio.SpiritBoxAudio
 import com.spirit.scan.camera.CameraBridge
 import com.spirit.scan.camera.CameraFeatures
 import com.spirit.scan.entity.EntityEngine
@@ -54,6 +60,7 @@ class MainActivity : ComponentActivity() {
     private lateinit var jones: JonesRunner
     private lateinit var sde: SdeRunner
     private var cameraBridge: CameraBridge? = null
+    private var spiritAudio: SpiritBoxAudio? = null
 
     private val fusedLocation by lazy {
         LocationServices.getFusedLocationProviderClient(this)
@@ -61,15 +68,11 @@ class MainActivity : ComponentActivity() {
 
     private val pipelineMutex = Mutex()
     private val processing = AtomicBoolean(false)
+    private var lastHapticLabel: String? = null
 
-    @Volatile
-    private var currentLocation = LocationContext()
-
-    @Volatile
-    private var lastCamera = CameraFeatures()
-
-    @Volatile
-    private var cameraStatus = "camera: off"
+    @Volatile private var currentLocation = LocationContext()
+    @Volatile private var lastCamera = CameraFeatures()
+    @Volatile private var cameraStatus = "camera: off"
 
     private val permissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
@@ -79,16 +82,14 @@ class MainActivity : ComponentActivity() {
             grants[Manifest.permission.ACCESS_COARSE_LOCATION] == true ||
             grants[Manifest.permission.BODY_SENSORS] == true
 
-        if (coreOk) {
-            startPipeline()
-        } else {
+        if (coreOk) startPipeline()
+        else {
             Log.w(SpiritApp.TAG, "Core permissions denied")
             uiStateHolder?.setStatus?.invoke("permissions denied")
         }
 
-        if (grants[Manifest.permission.CAMERA] == true) {
-            startCamera()
-        } else {
+        if (grants[Manifest.permission.CAMERA] == true) startCamera()
+        else {
             cameraStatus = "camera: permission denied"
             uiStateHolder?.setStatus?.invoke(cameraStatus)
         }
@@ -173,9 +174,7 @@ class MainActivity : ComponentActivity() {
             )
         }
 
-        if (modelsOk) {
-            requestPermissionsAndStart()
-        }
+        if (modelsOk) requestPermissionsAndStart()
     }
 
     private fun requestPermissionsAndStart() {
@@ -185,7 +184,8 @@ class MainActivity : ComponentActivity() {
             Manifest.permission.BODY_SENSORS,
             Manifest.permission.RECORD_AUDIO,
             Manifest.permission.POST_NOTIFICATIONS,
-            Manifest.permission.CAMERA
+            Manifest.permission.CAMERA,
+            Manifest.permission.VIBRATE
         )
         val missing = needed.filter {
             ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED
@@ -193,9 +193,15 @@ class MainActivity : ComponentActivity() {
         if (missing.isEmpty()) {
             startPipeline()
             startCamera()
+            startAudio()
         } else {
             permissionLauncher.launch(missing.toTypedArray())
         }
+    }
+
+    private fun startAudio() {
+        if (spiritAudio != null) return
+        spiritAudio = SpiritBoxAudio().also { it.start() }
     }
 
     private fun startCamera() {
@@ -206,17 +212,13 @@ class MainActivity : ComponentActivity() {
             return
         }
         if (cameraBridge != null) return
-
         try {
             cameraBridge = CameraBridge(this, this) { features ->
                 lastCamera = features
                 cameraStatus =
-                    "camera: on n=" +
-                        "%.2f".format(features.noiseVariance) +
-                        " m=" +
-                        "%.2f".format(features.motionMagnitude) +
-                        " b=" +
-                        "%.2f".format(features.brightness)
+                    "camera: on n=" + format2(features.noiseVariance) +
+                        " m=" + format2(features.motionMagnitude) +
+                        " b=" + format2(features.brightness)
             }
             cameraBridge?.start()
             cameraStatus = "camera: starting..."
@@ -230,6 +232,7 @@ class MainActivity : ComponentActivity() {
 
     private fun startPipeline() {
         if (!::entityEngine.isInitialized) return
+        startAudio()
 
         lifecycleScope.launch {
             while (true) {
@@ -264,9 +267,7 @@ class MainActivity : ComponentActivity() {
         }
 
         sensorManager = SensorStreamManager(this) {
-            if (!processing.compareAndSet(false, true)) {
-                return@SensorStreamManager
-            }
+            if (!processing.compareAndSet(false, true)) return@SensorStreamManager
             lifecycleScope.launch(Dispatchers.Default) {
                 try {
                     pipelineMutex.withLock {
@@ -278,6 +279,7 @@ class MainActivity : ComponentActivity() {
                             cameraBrightness = cam.brightness
                         )
                         val output = entityEngine.process(sensorManager.buffer, ctx)
+                        applyAudioAndHaptic(output)
                         withContext(Dispatchers.Main) {
                             uiStateHolder?.setCurrent?.invoke(output)
                             uiStateHolder?.addHistory?.invoke(output)
@@ -301,10 +303,57 @@ class MainActivity : ComponentActivity() {
         uiStateHolder?.setStatus?.invoke("sensors started | " + cameraStatus)
     }
 
+    private fun applyAudioAndHaptic(output: EntityOutput) {
+        val audio = spiritAudio ?: return
+        val level = when (output.jonesLabel) {
+            "firewall" -> 0.95f
+            "harmonic_break" -> 0.85f
+            "high_residual" -> (0.45f + output.residual * 0.2f).coerceIn(0.4f, 0.9f)
+            "strong_envelope" -> (0.5f + output.envelope * 0.4f).coerceIn(0.5f, 0.95f)
+            else -> 0.12f + output.jonesScore * 0.15f
+        }
+        audio.setIntensity(level)
+
+        if (output.jonesLabel != lastHapticLabel) {
+            if (output.jonesLabel != "stable") {
+                audio.pulseBurst()
+                vibratePulse()
+            }
+            lastHapticLabel = output.jonesLabel
+        }
+    }
+
+    private fun vibratePulse() {
+        try {
+            val vibrator = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                val vm = getSystemService(Context.VIBRATOR_MANAGER_SERVICE) as VibratorManager
+                vm.defaultVibrator
+            } else {
+                @Suppress("DEPRECATION")
+                getSystemService(Context.VIBRATOR_SERVICE) as Vibrator
+            }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                vibrator.vibrate(
+                    VibrationEffect.createOneShot(60, VibrationEffect.DEFAULT_AMPLITUDE)
+                )
+            } else {
+                @Suppress("DEPRECATION")
+                vibrator.vibrate(60)
+            }
+        } catch (_: Exception) {
+        }
+    }
+
+    private fun format2(v: Float): String {
+        val s = (v * 100f).toInt() / 100f
+        return s.toString()
+    }
+
     override fun onDestroy() {
         super.onDestroy()
         if (::sensorManager.isInitialized) sensorManager.stop()
         cameraBridge?.stop()
+        spiritAudio?.stop()
         if (::jones.isInitialized) jones.close()
         if (::sde.isInitialized) sde.close()
     }
