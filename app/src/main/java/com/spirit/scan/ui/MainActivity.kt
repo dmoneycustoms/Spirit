@@ -31,6 +31,8 @@ import com.google.android.gms.location.LocationServices
 import com.google.android.gms.location.Priority
 import com.google.android.gms.tasks.CancellationTokenSource
 import com.spirit.scan.SpiritApp
+import com.spirit.scan.camera.CameraBridge
+import com.spirit.scan.camera.CameraFeatures
 import com.spirit.scan.entity.EntityEngine
 import com.spirit.scan.entity.EntityOutput
 import com.spirit.scan.entity.LocationContext
@@ -48,6 +50,7 @@ class MainActivity : ComponentActivity() {
     private lateinit var entityEngine: EntityEngine
     private lateinit var jones: JonesRunner
     private lateinit var sde: SdeRunner
+    private var cameraBridge: CameraBridge? = null
 
     private val fusedLocation by lazy {
         LocationServices.getFusedLocationProviderClient(this)
@@ -56,14 +59,23 @@ class MainActivity : ComponentActivity() {
     @Volatile
     private var currentLocation = LocationContext()
 
+    @Volatile
+    private var lastCamera = CameraFeatures()
+
     private val permissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
     ) { grants ->
-        if (grants.values.all { it }) {
+        if (grants[Manifest.permission.ACCESS_FINE_LOCATION] == true ||
+            grants[Manifest.permission.ACCESS_COARSE_LOCATION] == true ||
+            grants[Manifest.permission.BODY_SENSORS] == true
+        ) {
             startPipeline()
         } else {
-            Log.w(SpiritApp.TAG, "Permissions denied")
+            Log.w(SpiritApp.TAG, "Core permissions denied")
             uiStateHolder?.setStatus?.invoke("permissions denied")
+        }
+        if (grants[Manifest.permission.CAMERA] == true) {
+            startCamera()
         }
     }
 
@@ -88,11 +100,8 @@ class MainActivity : ComponentActivity() {
             var selectedTab by remember { mutableIntStateOf(0) }
             var status by remember {
                 mutableStateOf(
-                    if (modelsOk) {
-                        "models ok - waiting for sensors..."
-                    } else {
-                        "MODELS FAILED: $modelError"
-                    }
+                    if (modelsOk) "models ok - waiting for sensors..."
+                    else "MODELS FAILED: $modelError"
                 )
             }
 
@@ -109,17 +118,13 @@ class MainActivity : ComponentActivity() {
                             NavigationBarItem(
                                 selected = selectedTab == 0,
                                 onClick = { selectedTab = 0 },
-                                icon = {
-                                    Icon(Icons.Default.Sensors, contentDescription = null)
-                                },
+                                icon = { Icon(Icons.Default.Sensors, contentDescription = null) },
                                 label = { Text("Live") }
                             )
                             NavigationBarItem(
                                 selected = selectedTab == 1,
                                 onClick = { selectedTab = 1 },
-                                icon = {
-                                    Icon(Icons.Default.History, contentDescription = null)
-                                },
+                                icon = { Icon(Icons.Default.History, contentDescription = null) },
                                 label = { Text("Timeline") }
                             )
                         }
@@ -164,16 +169,29 @@ class MainActivity : ComponentActivity() {
             Manifest.permission.ACCESS_COARSE_LOCATION,
             Manifest.permission.BODY_SENSORS,
             Manifest.permission.RECORD_AUDIO,
-            Manifest.permission.POST_NOTIFICATIONS
+            Manifest.permission.POST_NOTIFICATIONS,
+            Manifest.permission.CAMERA
         )
         val missing = needed.filter {
             ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED
         }
         if (missing.isEmpty()) {
             startPipeline()
+            startCamera()
         } else {
             permissionLauncher.launch(missing.toTypedArray())
         }
+    }
+
+    private fun startCamera() {
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA)
+            != PackageManager.PERMISSION_GRANTED
+        ) return
+        if (cameraBridge != null) return
+        cameraBridge = CameraBridge(this, this) { features ->
+            lastCamera = features
+        }
+        cameraBridge?.start()
     }
 
     private fun startPipeline() {
@@ -188,11 +206,21 @@ class MainActivity : ComponentActivity() {
                             CancellationTokenSource().token
                         ).result
                     }
+                    val cam = lastCamera
                     if (loc != null) {
                         currentLocation = LocationContext(
                             lat = loc.latitude,
                             lon = loc.longitude,
-                            accuracy = loc.accuracy
+                            accuracy = loc.accuracy,
+                            cameraNoise = cam.noiseVariance,
+                            cameraMotion = cam.motionMagnitude,
+                            cameraBrightness = cam.brightness
+                        )
+                    } else {
+                        currentLocation = currentLocation.copy(
+                            cameraNoise = cam.noiseVariance,
+                            cameraMotion = cam.motionMagnitude,
+                            cameraBrightness = cam.brightness
                         )
                     }
                 } catch (_: Exception) {
@@ -205,10 +233,13 @@ class MainActivity : ComponentActivity() {
             lifecycleScope.launch(Dispatchers.Default) {
                 try {
                     if (!sensorManager.buffer.ready()) return@launch
-                    val output = entityEngine.process(
-                        sensorManager.buffer,
-                        currentLocation
+                    val cam = lastCamera
+                    val ctx = currentLocation.copy(
+                        cameraNoise = cam.noiseVariance,
+                        cameraMotion = cam.motionMagnitude,
+                        cameraBrightness = cam.brightness
                     )
+                    val output = entityEngine.process(sensorManager.buffer, ctx)
                     withContext(Dispatchers.Main) {
                         uiStateHolder?.setCurrent?.invoke(output)
                         uiStateHolder?.addHistory?.invoke(output)
@@ -231,6 +262,7 @@ class MainActivity : ComponentActivity() {
     override fun onDestroy() {
         super.onDestroy()
         if (::sensorManager.isInitialized) sensorManager.stop()
+        cameraBridge?.stop()
         if (::jones.isInitialized) jones.close()
         if (::sde.isInitialized) sde.close()
     }
