@@ -66,6 +66,15 @@ fun LiveHud(
             )
         }
 
+        Text(text = " ", fontSize = 8.sp)
+
+        // Camera / pipeline status always visible
+        Text(
+            text = status,
+            color = Color(0xFF888888),
+            fontSize = 12.sp
+        )
+
         Text(text = " ", fontSize = 10.sp)
 
         Text(
