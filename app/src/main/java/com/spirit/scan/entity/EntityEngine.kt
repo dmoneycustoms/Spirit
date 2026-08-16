@@ -25,8 +25,7 @@ class EntityEngine(
     private val history = mutableListOf<AnomalyEvent>()
 
     @Volatile
-    var lastQuestion: String? = null
-        private set
+    private var lastQuestion: String? = null
 
     private var lastLabel: String? = null
     private var lastNarrative: String = "Listening..."
