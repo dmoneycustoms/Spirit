@@ -13,15 +13,20 @@ class CircularBuffer(private val capacity: Int = 64) {
     private val samples = ArrayDeque<Sample>(capacity)
     private var lastMag: FloatArray? = null
     private var lastAccel: FloatArray? = null
+    private val lock = Any()
 
     fun addMag(timestamp: Long, values: FloatArray) {
-        lastMag = values.copyOf(3)
-        tryEmit(timestamp)
+        synchronized(lock) {
+            lastMag = values.copyOf(3)
+            tryEmit(timestamp)
+        }
     }
 
     fun addAccel(timestamp: Long, values: FloatArray) {
-        lastAccel = values.copyOf(3)
-        tryEmit(timestamp)
+        synchronized(lock) {
+            lastAccel = values.copyOf(3)
+            tryEmit(timestamp)
+        }
     }
 
     private fun tryEmit(timestamp: Long) {
@@ -31,18 +36,32 @@ class CircularBuffer(private val capacity: Int = 64) {
         while (samples.size > capacity) samples.removeFirst()
     }
 
-    fun ready(): Boolean = samples.size >= capacity
+    fun ready(): Boolean {
+        synchronized(lock) {
+            return samples.size >= capacity
+        }
+    }
 
     fun clear() {
-        samples.clear()
-        lastMag = null
-        lastAccel = null
+        synchronized(lock) {
+            samples.clear()
+            lastMag = null
+            lastAccel = null
+        }
+    }
+
+    private fun snapshot(): List<Sample> {
+        synchronized(lock) {
+            return samples.toList()
+        }
     }
 
     fun toJonesFeatures(): Map<String, Float> {
-        require(ready())
-        val mags = samples.map { it.mag }
-        val accs = samples.map { it.accel }
+        val snap = snapshot()
+        require(snap.size >= capacity)
+
+        val mags = snap.map { it.mag }
+        val accs = snap.map { it.accel }
 
         val mx = mags.map { it[0] }.average().toFloat()
         val my = mags.map { it[1] }.average().toFloat()
@@ -86,9 +105,11 @@ class CircularBuffer(private val capacity: Int = 64) {
     }
 
     fun toSdeFeatures(jones: com.spirit.scan.ml.JonesResult? = null): FloatArray {
-        require(ready())
-        val mags = samples.map { it.mag }
-        val accs = samples.map { it.accel }
+        val snap = snapshot()
+        require(snap.size >= capacity)
+
+        val mags = snap.map { it.mag }
+        val accs = snap.map { it.accel }
 
         val magMags = mags.map { sqrt(it[0] * it[0] + it[1] * it[1] + it[2] * it[2]) }
         val accMags = accs.map { sqrt(it[0] * it[0] + it[1] * it[1] + it[2] * it[2]) }
