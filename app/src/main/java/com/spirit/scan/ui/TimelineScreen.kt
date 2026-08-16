@@ -16,7 +16,6 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.Modifier.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
@@ -29,7 +28,7 @@ import java.util.Locale
 @Composable
 fun TimelineScreen(events: List<EntityOutput>) {
     Column(
-        modifier = Modifier
+        modifier = androidx.compose.ui.Modifier.Modifier
             .fillMaxSize()
             .background(Color(0xFF0A0A0F))
             .padding(16.dp)
@@ -41,22 +40,28 @@ fun TimelineScreen(events: List<EntityOutput>) {
             fontFamily = FontFamily.Monospace,
             letterSpacing = 4.sp
         )
-        Spacer(modifier = Modifier.height(16.dp))
+        Spacer(
+            modifier = androidx.compose.ui.Modifier.Modifier.height(16.dp)
+        )
 
         if (events.isEmpty()) {
             Text(text = "No events yet", color = Color(0xFF666666))
         } else {
-            LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            LazyColumn(
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
                 items(events.reversed()) { e ->
                     Card(
                         colors = CardDefaults.cardColors(containerColor = Color(0xFF16161E)),
                         shape = RoundedCornerShape(10.dp),
-                        modifier = Modifier.fillMaxWidth()
+                        modifier = androidx.compose.ui.Modifier.Modifier.fillMaxWidth()
                     ) {
-                        Column(modifier = Modifier.padding(12.dp)) {
+                        Column(
+                            modifier = androidx.compose.ui.Modifier.Modifier.padding(12.dp)
+                        ) {
                             Row(
                                 horizontalArrangement = Arrangement.SpaceBetween,
-                                modifier = Modifier.fillMaxWidth()
+                                modifier = androidx.compose.ui.Modifier.Modifier.fillMaxWidth()
                             ) {
                                 Text(
                                     text = e.jonesLabel,
@@ -70,7 +75,9 @@ fun TimelineScreen(events: List<EntityOutput>) {
                                     fontSize = 12.sp
                                 )
                             }
-                            Spacer(modifier = Modifier.height(4.dp))
+                            Spacer(
+                                modifier = androidx.compose.ui.Modifier.Modifier.height(4.dp)
+                            )
                             Text(
                                 text = e.narrative,
                                 color = Color(0xFFE0E0E0),
