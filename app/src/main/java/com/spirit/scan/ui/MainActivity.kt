@@ -42,7 +42,10 @@ import com.spirit.scan.ml.SdeRunner
 import com.spirit.scan.sensor.SensorStreamManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import java.util.concurrent.atomic.AtomicBoolean
 
 class MainActivity : ComponentActivity() {
 
@@ -55,6 +58,9 @@ class MainActivity : ComponentActivity() {
     private val fusedLocation by lazy {
         LocationServices.getFusedLocationProviderClient(this)
     }
+
+    private val pipelineMutex = Mutex()
+    private val processing = AtomicBoolean(false)
 
     @Volatile
     private var currentLocation = LocationContext()
@@ -147,7 +153,7 @@ class MainActivity : ComponentActivity() {
                                 onAsk = { q ->
                                     if (::entityEngine.isInitialized) {
                                         entityEngine.setQuestion(q)
-                                        status = "question set - next window..."
+                                        status = "question set | " + cameraStatus
                                     }
                                 }
                             )
@@ -205,17 +211,19 @@ class MainActivity : ComponentActivity() {
             cameraBridge = CameraBridge(this, this) { features ->
                 lastCamera = features
                 cameraStatus =
-                    "camera: on noise=" +
+                    "camera: on n=" +
                         "%.2f".format(features.noiseVariance) +
-                        " motion=" +
-                        "%.2f".format(features.motionMagnitude)
+                        " m=" +
+                        "%.2f".format(features.motionMagnitude) +
+                        " b=" +
+                        "%.2f".format(features.brightness)
             }
             cameraBridge?.start()
             cameraStatus = "camera: starting..."
             uiStateHolder?.setStatus?.invoke(cameraStatus)
         } catch (e: Exception) {
             Log.e(SpiritApp.TAG, "startCamera failed", e)
-            cameraStatus = "camera: failed " + (e.message ?: "")
+            cameraStatus = "camera: failed " + (e.message ?: e.javaClass.simpleName)
             uiStateHolder?.setStatus?.invoke(cameraStatus)
         }
     }
@@ -256,28 +264,36 @@ class MainActivity : ComponentActivity() {
         }
 
         sensorManager = SensorStreamManager(this) {
+            if (!processing.compareAndSet(false, true)) {
+                return@SensorStreamManager
+            }
             lifecycleScope.launch(Dispatchers.Default) {
                 try {
-                    if (!sensorManager.buffer.ready()) return@launch
-                    val cam = lastCamera
-                    val ctx = currentLocation.copy(
-                        cameraNoise = cam.noiseVariance,
-                        cameraMotion = cam.motionMagnitude,
-                        cameraBrightness = cam.brightness
-                    )
-                    val output = entityEngine.process(sensorManager.buffer, ctx)
-                    withContext(Dispatchers.Main) {
-                        uiStateHolder?.setCurrent?.invoke(output)
-                        uiStateHolder?.addHistory?.invoke(output)
-                        uiStateHolder?.setStatus?.invoke("live | " + cameraStatus)
+                    pipelineMutex.withLock {
+                        if (!sensorManager.buffer.ready()) return@withLock
+                        val cam = lastCamera
+                        val ctx = currentLocation.copy(
+                            cameraNoise = cam.noiseVariance,
+                            cameraMotion = cam.motionMagnitude,
+                            cameraBrightness = cam.brightness
+                        )
+                        val output = entityEngine.process(sensorManager.buffer, ctx)
+                        withContext(Dispatchers.Main) {
+                            uiStateHolder?.setCurrent?.invoke(output)
+                            uiStateHolder?.addHistory?.invoke(output)
+                            uiStateHolder?.setStatus?.invoke("live | " + cameraStatus)
+                        }
                     }
                 } catch (e: Exception) {
                     Log.e(SpiritApp.TAG, "Pipeline error", e)
                     withContext(Dispatchers.Main) {
+                        val msg = e.message ?: e.javaClass.simpleName
                         uiStateHolder?.setStatus?.invoke(
-                            "pipeline error: " + (e.message ?: "unknown")
+                            "pipeline error: " + msg + " | " + cameraStatus
                         )
                     }
+                } finally {
+                    processing.set(false)
                 }
             }
         }
